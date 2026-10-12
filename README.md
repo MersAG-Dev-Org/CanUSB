@@ -1,2 +1,12 @@
 # CanUSB
-An OpenLCB PC to Can bus adaptor
+An OpenLCB PC to Can bus adaptor using  a ESP32 Devkit 1 30 pin development board. 
+
+The device requires you to have the following items, to be able to complete the build of the device.
+
+- ESP32 Devkit 1 30 pin development board. [AliExpress Link](https://www.aliexpress.com/item/1005012802947477.html?spm=a2g0o.productlist.main.2.3e8826434J4GWx&algo_pvid=bba59941-5dfd-4e80-83ff-d895db60b0ad&algo_exp_id=bba59941-5dfd-4e80-83ff-d895db60b0ad-1&pdp_ext_f=%7B%22order%22%3A%22274%22%2C%22eval%22%3A%221%22%2C%22fromPage%22%3A%22search%22%7D&pdp_npi=6%40dis%21GBP%212.89%212.75%21%21%2124.89%2123.69%21%40210393bd17917875410153511e0f43%2112000059380057224%21sea%21UK%214596211013%21X%211%210%21n_tag%3A-29919%3Bd%3A5f38e75e%3Bm03_new_user%3A-29895%3BpisId%3A5000000219610136&curPageLogUid=ijNolJpaH6r0&utparam-url=scene%3Asearch%7Cquery_from%3A%7Cx_object_id%3A1005012802947477%7C_p_origin_prod%3A)
+- ESP32 Devkit 1 30 pin break out board. [AliExpress Link](https://www.aliexpress.com/item/1005010035323349.html?spm=a2g0o.productlist.main.1.f4b55510XADjLl&algo_pvid=2e4ae555-274f-4de9-acc0-bf6c4f2093cf&algo_exp_id=2e4ae555-274f-4de9-acc0-bf6c4f2093cf-0&pdp_ext_f=%7B%22order%22%3A%22938%22%2C%22eval%22%3A%221%22%2C%22fromPage%22%3A%22search%22%7D&pdp_npi=6%40dis%21GBP%212.52%211.89%21%21%2121.69%2116.27%21%400b15841617917880672163033e0e74%2112000050900363517%21sea%21UK%214596211013%21X%211%210%21n_tag%3A-29919%3Bd%3A5f38e75e%3Bm03_new_user%3A-29895&curPageLogUid=bDu3mwlo5myV&utparam-url=scene%3Asearch%7Cquery_from%3A%7Cx_object_id%3A1005010035323349%7C_p_origin_prod%3A)
+- SN65HVD230 Can Transceiver module. [AliExpress Link](https://www.aliexpress.com/item/1005004871042756.html?spm=a2g0o.productlist.main.29.57625bd8kKFlyA&algo_pvid=12614798-a95e-471f-ae49-86e9475be181&algo_exp_id=12614798-a95e-471f-ae49-86e9475be181-26&pdp_ext_f=%7B%22order%22%3A%221211%22%2C%22eval%22%3A%221%22%2C%22fromPage%22%3A%22search%22%7D&pdp_npi=6%40dis%21GBP%211.43%211.36%21%21%211.84%211.75%21%40210393bd17917881876052176e0f22%2112000030830034574%21sea%21UK%214596211013%21X%211%210%21n_tag%3A-29919%3Bd%3A5f38e75e%3Bm03_new_user%3A-29895%3BpisId%3A5000000219610136&curPageLogUid=d1XMAqauWhDF&utparam-url=scene%3Asearch%7Cquery_from%3A%7Cx_object_id%3A1005004871042756%7C_p_origin_prod%3A)
+- A suitable USB Data cable. 
+- 4 100mm female to female Dupont connectors
+- A PC with the Arduino IDE installed.
+- A PC with JMRI and Java installed.
