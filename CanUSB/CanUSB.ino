@@ -98,15 +98,15 @@ void serialToCanTask(void *pvParameters) {
 }
 
 void setup() {
-  // Brief delay for power and strapping pin stabilization
+  // Brief delay for power supplies and strapping pin stabilization
   delay(500);
 
-  // Expand Arduino Serial RX/TX buffers heavily to prevent overflow at 460800 baud
+  // Expand Arduino Serial RX/TX buffers to prevent overflow at 460800 baud
   Serial.setRxBufferSize(2048);
   Serial.setTxBufferSize(2048);
   Serial.begin(460800);
 
-// Massive queues to absorb the Serial vs. CAN speed mismatch during JMRI startup
+  // General config with massive queues to absorb JMRI startup traffic
   twai_general_config_t g_config = {
       .mode = TWAI_MODE_NORMAL,
       .tx_io = CAN_TX_PIN,
@@ -119,8 +119,16 @@ void setup() {
       .intr_flags = ESP_INTR_FLAG_LEVEL1
   };
   
-  twai_timing_config_t  t_config = TWAI_TIMING_CONFIG_125KBITS();
-  twai_filter_config_t  f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+  // Custom timing configuration for 125 kbps with an optimized 75% sample point
+  twai_timing_config_t t_config = {
+      .brp = 32,
+      .tseg_1 = 14,
+      .tseg_2 = 5,
+      .sjw = 3,
+      .triple_sampling = false
+  };
+
+  twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
   if (twai_driver_install(&g_config, &t_config, &f_config) != ESP_OK ||
       twai_start() != ESP_OK) {
@@ -152,5 +160,6 @@ void setup() {
 }
 
 void loop() {
+  // FreeRTOS tasks handle everything concurrently in the background
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
