@@ -9,55 +9,88 @@
 TaskHandle_t canToSerialTaskHandle = NULL;
 TaskHandle_t serialToCanTaskHandle = NULL;
 
-void sendGridConnect(const twai_message_t& msg) {
-  Serial.print(':');
-  if (msg.extd) {
-    Serial.print('X');
-    char idStr[9];
-    snprintf(idStr, sizeof(idStr), "%08X", (unsigned int)msg.identifier);
-    Serial.print(idStr);
-  } else {
-    Serial.print('S');
-    char idStr[4];
-    snprintf(idStr, sizeof(idStr), "%03X", (unsigned int)msg.identifier);
-    Serial.print(idStr);
-  }
-  Serial.print(msg.rtr ? 'R' : 'N');
-  for (int i = 0; i < msg.data_length_code; i++) {
-    char byteStr[3];
-    snprintf(byteStr, sizeof(byteStr), "%02X", msg.data[i]);
-    Serial.print(byteStr);
-  }
-  Serial.print(";\r\n");
+// Fast lookup table for hex-to-ascii conversions
+const char HEX_LOOKUP[] = "0123456789ABCDEF";
+
+// Fast byte parsing utility
+inline uint8_t parseHexNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return 0;
 }
 
-bool parseGridConnect(const String& str, twai_message_t& msg) {
-  int len = str.length();
-  if (len < 4 || str.charAt(0) != ':' || str.charAt(len - 1) != ';') return false;
+// Highly optimized formatting using direct array index operations instead of snprintf
+void sendGridConnect(const twai_message_t& msg) {
+  char buf[32];
+  int idx = 0;
+  
+  buf[idx++] = ':';
+  if (msg.extd) {
+    buf[idx++] = 'X';
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 28) & 0x0F];
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 24) & 0x0F];
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 20) & 0x0F];
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 16) & 0x0F];
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 12) & 0x0F];
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 8)  & 0x0F];
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 4)  & 0x0F];
+    buf[idx++] = HEX_LOOKUP[msg.identifier         & 0x0F];
+  } else {
+    buf[idx++] = 'S';
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 8)  & 0x0F];
+    buf[idx++] = HEX_LOOKUP[(msg.identifier >> 4)  & 0x0F];
+    buf[idx++] = HEX_LOOKUP[msg.identifier         & 0x0F];
+  }
+  
+  buf[idx++] = msg.rtr ? 'R' : 'N';
+  
+  for (int i = 0; i < msg.data_length_code; i++) {
+    buf[idx++] = HEX_LOOKUP[(msg.data[i] >> 4) & 0x0F];
+    buf[idx++] = HEX_LOOKUP[msg.data[i]        & 0x0F];
+  }
+  
+  buf[idx++] = ';';
+  buf[idx++] = '\r';
+  buf[idx++] = '\n';
+  
+  // Single atomic write operation down to the hardware core
+  Serial.write((const uint8_t*)buf, idx);
+}
+
+// Zero-allocation Gridconnect string parser using basic array indexes
+bool parseGridConnectFast(const char* buf, int len, twai_message_t& msg) {
+  if (len < 5 || buf[0] != ':' || buf[len - 1] != ';') return false;
 
   memset(&msg, 0, sizeof(msg));
-  char frameType = str.charAt(1);
+  char frameType = buf[1];
   msg.extd = (frameType == 'X' || frameType == 'x') ? 1 : 0;
 
-  int flagPos = str.indexOf('N');
-  if (flagPos == -1) flagPos = str.indexOf('n');
-  if (flagPos == -1) {
-    flagPos = str.indexOf('R');
-    if (flagPos == -1) flagPos = str.indexOf('r');
-    if (flagPos != -1) msg.rtr = 1;
+  int idLen = msg.extd ? 8 : 3;
+  if (len < 2 + idLen + 1) return false;
+
+  // Parse identifier directly out of the indices
+  uint32_t id = 0;
+  for (int i = 0; i < idLen; i++) {
+    id = (id << 4) | parseHexNibble(buf[2 + i]);
   }
-  if (flagPos == -1) return false;
+  msg.identifier = id;
 
-  String idStr = str.substring(2, flagPos);
-  msg.identifier = strtoul(idStr.c_str(), NULL, 16);
+  char typeFlag = buf[2 + idLen];
+  if (typeFlag == 'R' || typeFlag == 'r') {
+    msg.rtr = 1;
+  }
 
-  String dataStr = str.substring(flagPos + 1, len - 1);
-  msg.data_length_code = dataStr.length() / 2;
+  // Parse remaining payload data bytes
+  int dataStartIdx = 2 + idLen + 1;
+  int dataLenChars = (len - 1) - dataStartIdx;
+  msg.data_length_code = dataLenChars / 2;
   if (msg.data_length_code > 8) msg.data_length_code = 8;
 
   for (int i = 0; i < msg.data_length_code; i++) {
-    String byteStr = dataStr.substring(i * 2, i * 2 + 2);
-    msg.data[i] = (uint8_t)strtoul(byteStr.c_str(), NULL, 16);
+    uint8_t high = parseHexNibble(buf[dataStartIdx + (i * 2)]);
+    uint8_t low  = parseHexNibble(buf[dataStartIdx + (i * 2) + 1]);
+    msg.data[i] = (high << 4) | low;
   }
   return true;
 }
@@ -66,7 +99,7 @@ bool parseGridConnect(const String& str, twai_message_t& msg) {
 void canToSerialTask(void *pvParameters) {
   twai_message_t rx_msg;
   while (true) {
-    while (twai_receive(&rx_msg, pdMS_TO_TICKS(10)) == ESP_OK) {
+    while (twai_receive(&rx_msg, 0) == ESP_OK) {
       sendGridConnect(rx_msg);
     }
     vTaskDelay(pdMS_TO_TICKS(1));
@@ -75,22 +108,27 @@ void canToSerialTask(void *pvParameters) {
 
 // --- TASK 2: Handles Serial (JMRI) -> CAN Bus (Pinned to Core 0) ---
 void serialToCanTask(void *pvParameters) {
-  String inputBuffer = "";
-  inputBuffer.reserve(96);
+  static char serialBuffer[64];
+  int bufIndex = 0;
 
   while (true) {
-    while (Serial.available() > 0) {
+    int availableBytes = Serial.available();
+    while (availableBytes > 0) {
       char c = (char)Serial.read();
+      availableBytes--;
+
       if (c == '\r' || c == '\n') continue;
 
-      inputBuffer += c;
+      if (bufIndex < (int)sizeof(serialBuffer) - 1) {
+        serialBuffer[bufIndex++] = c;
+      }
 
       if (c == ';') {
         twai_message_t tx_msg;
-        if (parseGridConnect(inputBuffer, tx_msg)) {
-          twai_transmit(&tx_msg, pdMS_TO_TICKS(2));
+        if (parseGridConnectFast(serialBuffer, bufIndex, tx_msg)) {
+          twai_transmit(&tx_msg, 0); 
         }
-        inputBuffer = "";
+        bufIndex = 0; 
       }
     }
     vTaskDelay(pdMS_TO_TICKS(1));
@@ -98,23 +136,22 @@ void serialToCanTask(void *pvParameters) {
 }
 
 void setup() {
-  // Brief delay for power supplies and strapping pin stabilization
   delay(500);
 
-  // Expand Arduino Serial RX/TX buffers to prevent overflow at 460800 baud
-  Serial.setRxBufferSize(2048);
-  Serial.setTxBufferSize(2048);
+  // Allocate massive RAM pipelines to absorb PC/JMRI startup bursts
+  Serial.setRxBufferSize(4096);
+  Serial.setTxBufferSize(4096);
   Serial.begin(460800);
 
-  // General config with massive queues to absorb JMRI startup traffic
+  // General config restored with massive queues to prevent startup node drops
   twai_general_config_t g_config = {
       .mode = TWAI_MODE_NORMAL,
       .tx_io = CAN_TX_PIN,
       .rx_io = CAN_RX_PIN,
       .clkout_io = TWAI_IO_UNUSED,
       .bus_off_io = TWAI_IO_UNUSED,
-      .tx_queue_len = 1024, // 1024 frames towards CAN bus
-      .rx_queue_len = 128,  // Large RX queue for layout node bursts
+      .tx_queue_len = 2048, // Restored massive TX queue for startup flood
+      .rx_queue_len = 512,  // Restored massive RX queue for node response wave
       .alerts_enabled = TWAI_ALERT_NONE,
       .intr_flags = ESP_INTR_FLAG_LEVEL1
   };
@@ -137,11 +174,10 @@ void setup() {
     }
   }
 
-  // Create Dedicated FreeRTOS Tasks across both CPU cores
   xTaskCreatePinnedToCore(
     canToSerialTask,     
     "CanToSerial",       
-    4096,                
+    3072,                
     NULL,                
     3,                   
     &canToSerialTaskHandle,
@@ -151,7 +187,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     serialToCanTask,     
     "SerialToCan",       
-    4096,                
+    3072,                
     NULL,                
     2,                   
     &serialToCanTaskHandle,
@@ -160,6 +196,5 @@ void setup() {
 }
 
 void loop() {
-  // FreeRTOS tasks handle everything concurrently in the background
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
